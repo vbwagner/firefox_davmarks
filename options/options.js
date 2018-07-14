@@ -1,7 +1,7 @@
-var background_page = browser.extension.getBackgroundPage();
+var background_page = chrome.extension.getBackgroundPage();
 
 function checkForm() {
-	if(document.getElementById('wdurl').value != '' && document.getElementById('user').value != '' && document.getElementById('password').value != ''){
+	if(document.getElementById('wdurl').value !== '' && document.getElementById('user').value !== '' && document.getElementById('password').value !== ''){
         document.getElementById('ssubmit').disabled=false;
 		document.getElementById('mdownload').disabled=false;
 		document.getElementById('mupload').disabled=false;
@@ -22,7 +22,7 @@ function saveOptions(e) {
 		document.getElementById('smessage').innerHTML = "It looks like you haven't used the add-on yet. You can now import any bookmarks saved on the server with <b>\"Import\"</b>. If you have already created bookmarks in your browser, it might be a good idea to delete them with <b>\"Remove\"</b>.";
 	}
 	
-	browser.storage.local.set({
+	chrome.storage.local.set({
 		s_startup: document.querySelector("#s_startup").checked,
 		s_create: document.querySelector("#s_create").checked,
 		s_remove: document.querySelector("#s_remove").checked,
@@ -47,7 +47,7 @@ function saveOptions(e) {
 						break;
 			case 200:	message.textContent = 'Login successfully. Options saved';
 						message.style.cssText = "background: #98FB98; padding: 3px; margin: 2px;";
-						browser.storage.local.set({
+						chrome.storage.local.set({
 							wdurl: document.querySelector("#wdurl").value,
 							user: document.querySelector("#user").value,
 							password: document.querySelector("#password").value,
@@ -63,40 +63,69 @@ function saveOptions(e) {
 }
 
 function restoreOptions() {
-	function setCurrentChoice(result) {
+	chrome.storage.local.get(['wdurl','user','password','s_startup','s_create','s_remove','s_change','last_s'], function(result) {
 		document.querySelector("#wdurl").value = result.wdurl || "";
 		document.querySelector("#user").value = result.user || "";
 		document.querySelector("#password").value = result.password || "";
-		
+		checkForm();
 		document.querySelector("#s_startup").checked = result.s_startup || false;
 		document.querySelector("#s_create").checked = result.s_create || false;
 		document.querySelector("#s_remove").checked = result.s_remove || false;
 		document.querySelector("#s_change").checked = result.s_change || false;
-
-		checkForm();
 		
-		last_sync = result.last_s || 0;
-		if(last_sync.toString().length > 0) {
-			document.querySelector("#s_startup").removeAttribute("disabled");
+		last_s = result.last_s || "";
+		if(last_s.toString().length > 0) {
+			document.querySelector("#s_startup").disabled = false;
 		}
-	}
-
-	function onError(error) {
-		console.log(`Error: ${error}`);
-	}
-
-	var getting = browser.storage.local.get();
-	getting.then(setCurrentChoice, onError);
+	});
+	/*
+    chrome.storage.local.get('wdurl', function (result) {
+        document.querySelector("#wdurl").value = result.wdurl || "";
+		checkForm();
+    });
+	
+	chrome.storage.local.get('user', function (result) {
+        document.querySelector("#user").value = result.user || "";
+		checkForm();
+    });
+	
+	chrome.storage.local.get('password', function (result) {
+        document.querySelector("#password").value = result.password || "";
+		checkForm();
+    });
+	
+	chrome.storage.local.get('s_startup', function (result) {
+        document.querySelector("#s_startup").checked = result.s_startup || false;
+    });
+	
+	chrome.storage.local.get('s_create', function (result) {
+        document.querySelector("#s_create").checked = result.s_create || false;
+    });
+	
+	chrome.storage.local.get('s_remove', function (result) {
+        document.querySelector("#s_remove").checked = result.s_remove || false;
+    });
+	
+	chrome.storage.local.get('s_change', function (result) {
+        document.querySelector("#s_change").checked = result.s_change || false;
+    });
+	
+	chrome.storage.local.get('last_s', function (result) {
+        last_s = result.last_s || "";
+		if(last_s.toString().length > 0) {
+			document.querySelector("#s_startup").disabled = false;
+		}
+    });
+	*/
 }
 
 function manualImport() {
-	var bookmarks = browser.bookmarks.search({});
-	bookmarks.then(doImport, background_page.onRejected);
-	
+	let bookmarks = chrome.bookmarks.search({}, doImport);
+
 	function doImport(bookmarks) {
 		let count = 0;
 		for (item of bookmarks) {
-			if(typeof item.url !== 'undefined' && item.url.startsWith("http"))
+			if(("url" in item))
 				count++;
 		}
 		
@@ -114,7 +143,7 @@ function manualImport() {
 			
 			document.getElementById('impYes').onclick = function(e) {
 				background_page.removeAllMarks();
-				browser.storage.local.set({last_s: 1});
+				chrome.storage.local.set({last_s: 1});
 				background_page.getDAVMarks();
 				modal.style.display = "none";
 			};
@@ -129,32 +158,72 @@ function manualImport() {
 			};
 		}
 		else {
-			browser.storage.local.set({last_s: 1});
-			document.querySelector("#s_startup").removeAttribute("disabled");
+			chrome.storage.local.set({last_s: 1});
+			document.querySelector("#s_startup").disabled = false;
 			background_page.getDAVMarks();
 		}
 	}
 }
 
 function manualRemove() {
-	if(confirm("When you continue, all your current bookmarks are removed. Are you sure?")) {
-		background_page.removeAllMarks();
-	}
+	chrome.notifications.onButtonClicked.addListener(function(id, button) {
+		if(button === 0) {
+			background_page.removeAllMarks();
+			chrome.notifications.clear(id);
+		}
+
+	chrome.notifications.clear(id);
+	});
+	
+	chrome.notifications.create("RemovePrompt", {
+		type: "basic",
+		iconUrl: chrome.runtime.getURL("icons/bookmark.png"),
+		title: "DAVMarks",
+		message: "When you continue, all your current bookmarks are removed. Are you sure?",
+		buttons: [
+			{
+				title: "Yes"
+			},
+			{
+				title: "No"
+			}
+		]
+	});
+	
+	chrome.bookmarks.onRemoved.addListener(onRemovedCheck);
 }
 
 function manualExport() {
-	var gettingTree = browser.bookmarks.getTree();
 	background_page.saveMarks();
 }
 
 function syncWarning() {
-	if(document.getElementById("s_startup").checked) {
-		if(confirm("Warning: If you use \"Firefox Sync\" and activate the option \"Browser startup\", it is possible that bookmarks you get duplicates, even if the bookmarks are validated during import. Should this option still be activated?")) {
+	chrome.notifications.onButtonClicked.addListener(function(id, button) {
+		if(button === 0) {
 			document.getElementById("s_startup").checked = true;
 		}
 		else {
 			document.getElementById("s_startup").checked = false;
 		}
+
+	chrome.notifications.clear(id);
+	});
+
+	if(document.getElementById("s_startup").checked) {
+		chrome.notifications.create("setStartup", {
+			type: "basic",
+			iconUrl: chrome.runtime.getURL("icons/bookmark.png"),
+			title: "DAVMarks",
+			message: "Warning: If you use \"Chrome Bookmark Sync\" and activate the option \"Browser startup\", it is possible that you get bookmark duplicates, even if the bookmarks are validated during import. Should this option still be activated?",
+			buttons: [
+				{
+					title: "Yes"
+				},
+				{
+					title: "No"
+				}
+			]
+		});
 	}
 }
 

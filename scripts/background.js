@@ -1,19 +1,17 @@
-const filename = "bookmarks.json";
+const filename = "bookmarks_chrome.json";
 var dictOldIDsToNewIDs = { "-1": "-1" };
 
-checkSettings();
 init();
-browser.browserAction.onClicked.addListener(openSettings);
-browser.bookmarks.onCreated.addListener(onCreatedCheck);
-browser.bookmarks.onRemoved.addListener(onRemovedCheck);
-browser.bookmarks.onChanged.addListener(onChangedCheck)
-browser.notifications.onClicked.addListener(notificationSettings)
+chrome.browserAction.onClicked.addListener(openSettings);
+chrome.bookmarks.onCreated.addListener(onCreatedCheck);
+chrome.bookmarks.onRemoved.addListener(onRemovedCheck);
+chrome.bookmarks.onChanged.addListener(onChangedCheck)
+chrome.notifications.onClicked.addListener(notificationSettings)
 
 function init() {
-	let getting = browser.storage.local.get();
-	getting.then( (option) => {
-		let start = option.s_startup || false;
-		if( start === true ) {
+	chrome.storage.local.get('s_startup', function (result) {
+		s_startup = result.s_startup || false;
+		if(s_startup === true) {
 			getDAVMarks();
 		}
 	});
@@ -26,16 +24,11 @@ function notificationSettings(id) {
 }
 
 function openSettings() {
-	browser.runtime.openOptionsPage();
-}
-
-function checkSettings() {
-	var getting = browser.storage.local.get();
-	getting.then(onGot, onError);
+	chrome.runtime.openOptionsPage();
 }
 
 function notify(notid, message) {
-	browser.notifications.create(notid, {
+	chrome.notifications.create(notid, {
 		"type": "basic",
 		"title": "DAVMarks",
 		"iconUrl": "icons/bookmark.png",
@@ -44,92 +37,102 @@ function notify(notid, message) {
 }
 
 function onCreatedCheck() {
-	checkSettings();
-	if(s_create === true) {
-		saveMarks();
-	}
+	chrome.storage.local.get('s_create', function (result) {
+		s_create = result.s_create || false;
+		if(s_create === true) {
+			saveMarks();
+		}
+	});
 }
 
 function onChangedCheck() {
-	checkSettings();
-	if(s_change === true) {
-		saveMarks();
-	}
+	chrome.storage.local.get('s_change', function (result) {
+		s_change = result.s_change || false;
+		if(s_change === true) {
+			saveMarks();
+		}
+	});
 }
 
 function onRemovedCheck() {
-	checkSettings();
-	if(s_remove === true) {
-		browser.bookmarks.onRemoved.removeListener(onRemovedCheck);
-		saveMarks();
-	}
+	chrome.storage.local.get('s_remove', function (result) {
+        s_remove = result.s_remove || false;
+		if(s_remove === true) {
+			chrome.bookmarks.onRemoved.removeListener(onRemovedCheck);
+			saveMarks();
+		}
+    });
+	
 }
 
 function saveMarks() {
-	var gettingTree = browser.bookmarks.getTree();
-	gettingTree.then(saveDAVMarks, onRejected);
+	chrome.bookmarks.getTree(saveDAVMarks);
 	
 	let datems = Date.now();
 	let date = new Date(datems);
 	let doptions = { weekday: 'long',  hour: '2-digit', minute: '2-digit' };
-	browser.storage.local.set({
+	chrome.storage.local.set({
 		last_s: datems,
 	});
 	
-	browser.browserAction.setTitle({title: "DAVMarks: " + date.toLocaleDateString(navigator.language,doptions)});
-}
-
-function onRejected(error) {
-  notify('error', 'An error: ${error}');
+	chrome.browserAction.setTitle({title: "DAVMarks: " + date.toLocaleDateString(navigator.language,doptions)});
 }
 
 function saveDAVMarks(bookmarkItems) {
-	browser.bookmarks.onRemoved.removeListener(onRemovedCheck);
-	var getting = browser.storage.local.get();
-	getting.then(onGot, onError);
+	chrome.bookmarks.onRemoved.removeListener(onRemovedCheck);
+	
+	chrome.storage.local.get(['wdurl','user','password'], function(optionv) {
+		let davurl = optionv.wdurl || "";
+		let user = optionv.user || "";
+		let pw = optionv.password || "";
 
-	var bookmarks = JSON.stringify(bookmarkItems);
-	var xhr = new XMLHttpRequest();
-	xhr.open("PUT", davurl + "/" + filename, true);
-	
-	xhr.withCredentials = true;
-	xhr.setRequestHeader('X-Filename', filename);
-	xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
-	
-	xhr.onload = function () {
-		if( xhr.status < 200 || xhr.status > 226) {
-			notify('error','There was some error saving the bookmarks. The status response is: ' + xhr.status);
-			browser.bookmarks.onRemoved.addListener(onRemovedCheck);
+		var bookmarks = JSON.stringify(bookmarkItems);
+		var xhr = new XMLHttpRequest();
+		xhr.open("PUT", davurl + "/" + filename, true);
+		
+		xhr.withCredentials = true;
+		xhr.setRequestHeader('X-Filename', filename);
+		xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
+		
+		xhr.onload = function () {
+			if( xhr.status < 200 || xhr.status > 226) {
+				notify('error','There was some error saving the bookmarks. The status response is: ' + xhr.status);
+				chrome.bookmarks.onRemoved.addListener(onRemovedCheck);
+			}
 		}
-	}
-	xhr.send(bookmarks);
+		xhr.send(bookmarks);
+	});
 }
 
 function getDAVMarks() {
-	checkSettings();
-
-	var xhr = new XMLHttpRequest();
-	xhr.open('GET', davurl + '/' + filename + '?t=' + Math.random(), true);
-	
-	xhr.withCredentials = true;
-	xhr.setRequestHeader('X-Filename', filename);
-	xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
-	
-	xhr.onload = function () {		
-		if( xhr.status != 200 ) {
-			notify('error','There was a error retrieving the bookmarks from the server. The status response is: ' + xhr.status);
+	chrome.storage.local.get(['wdurl','user','password'], function(optionv) {
+		let davurl = optionv.wdurl || "";
+		let user = optionv.user || "";
+		let pw = optionv.password || "";
+		
+		var xhr = new XMLHttpRequest();
+		xhr.open('GET', davurl + '/' + filename + '?t=' + Math.random(), true);
+		
+		xhr.withCredentials = true;
+		xhr.setRequestHeader('X-Filename', filename);
+		xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
+		
+		xhr.onload = function () {		
+			if( xhr.status != 200 ) {
+				notify('error','There was a error retrieving the bookmarks from the server. The status response is: ' + xhr.status);
+			}
+			else {
+				let DAVMarks = JSON.parse(xhr.responseText);
+				chrome.bookmarks.onCreated.removeListener(onCreatedCheck);
+				chrome.bookmarks.onRemoved.removeListener(onRemovedCheck);
+				pMarks = [];
+				let parsedMarks = parseMarks(DAVMarks, 0);
+				count = 0;
+				addAllMarks(parsedMarks, 1);			
+			}
 		}
-		else {
-			let DAVMarks = JSON.parse(xhr.responseText);
-			browser.bookmarks.onCreated.removeListener(onCreatedCheck);
-			browser.bookmarks.onRemoved.removeListener(onRemovedCheck);
-			pMarks = [];
-			let parsedMarks = parseMarks(DAVMarks, index=0);
-			count = 0;
-			addAllMarks(parsedMarks);			
-		}
-	}
-	xhr.send();
+		xhr.send();
+	});
 }
 
 function parseMarks(DAVMarks, level=0) {
@@ -145,102 +148,83 @@ function parseMarks(DAVMarks, level=0) {
 }
 
 function removeAllMarks() {
-	browser.bookmarks.onRemoved.removeListener(onRemovedCheck);
-	browser.bookmarks.getTree().then(function(tree) {
+	chrome.bookmarks.onRemoved.removeListener(onRemovedCheck);
+	chrome.bookmarks.getTree(function(tree) {
 		tree[0].children.forEach(function(mainfolder) {
 			mainfolder.children.forEach(function(userfolder) {
-				browser.bookmarks.removeTree(userfolder.id);
+				chrome.bookmarks.removeTree(userfolder.id);
 			});
 		});
 	});
-	browser.bookmarks.onRemoved.addListener(onRemovedCheck);
-	browser.storage.local.set({
+	
+	chrome.storage.local.set({
 		last_s: 1,
 	});
 }
 
-function addAllMarks(parsedMarks, index=1) {
-	browser.bookmarks.onCreated.removeListener(onCreatedCheck);
+function addAllMarks(parsedMarks, index) {
+	chrome.bookmarks.onCreated.removeListener(onCreatedCheck);
     let bmid = parsedMarks[index].id;
     let bmparentId = parsedMarks[index].parentId;
     let bmindex = parsedMarks[index].index;
     let bmtitle = parsedMarks[index].title;
-    let bmtype = parsedMarks[index].type;
+	let bmtype = "";
+	
+	if(("url" in parsedMarks[index])) {
+		bmtype = "bookmark";
+	}
+	else {
+		bmtype = "folder";
+	}
+	
     let bmurl = parsedMarks[index].url;
 	let bmdate = parsedMarks[index].dateAdded;
-    let newParentId = (typeof bmparentId !== 'undefined' && bmparentId.substr(bmparentId.length - 2) == "__") ? bmparentId : dictOldIDsToNewIDs[bmparentId];
-	
-	if(bmparentId == "root________" || bmdate < last_s) {
+	let newParentId = (typeof bmparentId !== 'undefined' && bmparentId.length === 1 ) ? bmparentId : dictOldIDsToNewIDs[bmparentId];
+
+	if(bmparentId == "0") {
 		addAllMarks(parsedMarks, ++index);
 		return false;
 	}
 	
-	browser.bookmarks.create(
+	chrome.bookmarks.create(
 		(bmtype == "separator" ?
 		 {
 			 index: bmindex,
 			 parentId: newParentId,
-			 type: bmtype
 		 } :
 		 (bmtype == "folder" ?
 		  {
 			  index: bmindex,
 			  parentId: newParentId,
 			  title: bmtitle,
-			  type: bmtype
 		  } :
 		  {
 			  index: bmindex,
 			  parentId: newParentId,
 			  title: bmtitle,
-			  type: bmtype,
 			  url: bmurl
 		  }
 		 )
-		)
-	).then(function(node) {
-		let newID = bmid.substr(bmid.length - 2) == "__" ? bmid : node.id;
-		dictOldIDsToNewIDs[bmid] = newID;
-		++count;
-
-		if (typeof parsedMarks[index+1] !== 'undefined') {
-			addAllMarks(parsedMarks, ++index);
+		), function(newBookmark) {
+			let newID = bmid.length == 1 ? bmid : newBookmark.id;
+			dictOldIDsToNewIDs[bmid] = newID;
+			++count;
 			
-		}
-		else {
-			notify('info','Imported ' + count + ' bookmarks/folders.');
-			browser.bookmarks.onCreated.addListener(onCreatedCheck);
-			browser.bookmarks.onRemoved.addListener(onRemovedCheck);
-			
-			let datems = Date.now();
-			let date = new Date(datems);
-			let doptions = { weekday: 'long',  hour: '2-digit', minute: '2-digit' };
-			browser.storage.local.set({
-				last_s: datems,
-			});
-			browser.browserAction.setTitle({title: "DAVMarks: " + date.toLocaleDateString(navigator.language,doptions)});
-		}
-	}, function(err) {
-		notify('error', 'There was a error importing the bookmark \"' + bmtitle + ' (' + bmurl + ')\".');
-	});
-}
-
-function onError(error) {
-	notify('error', 'Error: ${error}');
-}
-
-function onGot(item) {
-	s_startup = item.s_startup || false;
-	s_create = item.s_create || false;
-	s_remove = item.s_remove || false;
-	s_change = item.s_change || false;
-	last_s = item.last_s || 0;
-	
-	davurl = item.wdurl || "";
-	user = item.user || "";
-	pw = item.password || "";
-	
-	if(davurl.length <= 0 || user.length <= 0 || pw.length <= 0) {
-		notify('setting', 'You should configure url, user and password in the options of DAVMarks, so that the AddOn can process the bookmarks.');
-	}
+			if (typeof parsedMarks[index+1] !== 'undefined') {
+				addAllMarks(parsedMarks, ++index);
+			}
+			else {
+				notify('info','Imported ' + count + ' bookmarks/folders.');
+				chrome.bookmarks.onCreated.addListener(onCreatedCheck);
+				chrome.bookmarks.onRemoved.addListener(onRemovedCheck);
+				
+				let datems = Date.now();
+				let date = new Date(datems);
+				let doptions = { weekday: 'long',  hour: '2-digit', minute: '2-digit' };
+				chrome.storage.local.set({
+					last_s: datems,
+				});
+				chrome.browserAction.setTitle({title: "DAVMarks: " + date.toLocaleDateString(navigator.language,doptions)});
+			}
+		});
 }
