@@ -30,9 +30,10 @@ function saveOptions(e) {
 	});
 	
 	var xhr = new XMLHttpRequest();
-	xhr.open("GET", document.querySelector("#wdurl").value, true);
+	xhr.open("GET", document.querySelector("#wdurl").value, true,
+		document.querySelector("#user").value,
+		document.querySelector("#password").value);
 	xhr.withCredentials = true;
-	xhr.setRequestHeader("Authorization", 'Basic ' + btoa(document.querySelector("#user").value + ":" + document.querySelector("#password").value));
 	let message = document.getElementById('wmessage');
 	xhr.onload = function () {
 		switch(xhr.status) {
