@@ -90,11 +90,10 @@ function saveDAVMarks(bookmarkItems) {
 
 	var bookmarks = JSON.stringify(bookmarkItems);
 	var xhr = new XMLHttpRequest();
-	xhr.open("PUT", davurl + "/" + filename, true);
+	xhr.open("PUT", davurl + "/" + filename, true, user, pw);
 	
 	xhr.withCredentials = true;
 	xhr.setRequestHeader('X-Filename', filename);
-	xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
 	
 	xhr.onload = function () {
 		if( xhr.status < 200 || xhr.status > 226) {
@@ -109,11 +108,10 @@ function getDAVMarks() {
 	checkSettings();
 
 	var xhr = new XMLHttpRequest();
-	xhr.open('GET', davurl + '/' + filename + '?t=' + Math.random(), true);
+	xhr.open('GET', davurl + '/' + filename + '?t=' + Math.random(), true, user, pw);
 	
 	xhr.withCredentials = true;
 	xhr.setRequestHeader('X-Filename', filename);
-	xhr.setRequestHeader("Authorization", 'Basic ' + btoa(user + ":" + pw));
 	
 	xhr.onload = function () {		
 		if( xhr.status != 200 ) {
